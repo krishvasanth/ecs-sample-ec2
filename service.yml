@@ -1,17 +1,11 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: A stack for deploying containerized applications onto a cluster of EC2
-             hosts using Elastic Container Service. This stack runs containers on
-             hosts that are in a public VPC subnet, and includes a public facing load
-             balancer to register the services in.
 Parameters:
   DesiredCapacity:
     Type: Number
     Default: 1
-    Description: Number of EC2 instances to launch in your ECS cluster.
   MaxSize:
     Type: Number
     Default: 3
-    Description: Maximum number of EC2 instances that can be launched in your ECS cluster.
   ECSAMI:
     Description: AMI ID
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
@@ -125,6 +119,8 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
   ECSCluster:
     Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: SampleService
 
   EcsHostSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -162,6 +158,17 @@ Resources:
     UpdatePolicy:
       AutoScalingReplacingUpdate:
         WillReplace: 'true'
+
+  CPUPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref ECSAutoScalingGroup
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 40
+
   ContainerInstances:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -241,6 +248,7 @@ Resources:
       SecurityGroupIngress:          
           - CidrIp: 0.0.0.0/0
             IpProtocol: -1
+
   PublicLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -252,26 +260,26 @@ Resources:
         - !Ref PublicSubnetOne
         - !Ref PublicSubnetTwo
       SecurityGroups: [!Ref 'PublicLoadBalancerSG']
-  DummyTargetGroupPublic:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+
+  PublicLoadBalancerListener1:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn:
+    - PublicLoadBalancer
     Properties:
-      HealthCheckIntervalSeconds: 6
-      HealthCheckPath: /
-      HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      Name: !Join ['-', [!Ref 'AWS::StackName', 'drop-1']]
-      Port: 80
+      DefaultActions:
+      - TargetGroupArn: !Ref TargetGroup1
+        Type: 'forward'
+      LoadBalancerArn: !Ref PublicLoadBalancer
+      Port: 8080
       Protocol: HTTP
-      UnhealthyThresholdCount: 2
-      VpcId: !Ref 'VPC'
+
   PublicLoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     DependsOn:
       - PublicLoadBalancer
     Properties:
       DefaultActions:
-        - TargetGroupArn: !Ref 'DummyTargetGroupPublic'
+        - TargetGroupArn: !Ref 'TargetGroup'
           Type: 'forward'
       LoadBalancerArn: !Ref 'PublicLoadBalancer'
       Port: 80
@@ -326,6 +334,39 @@ Resources:
           PortMappings:
             - ContainerPort: !Ref 'ContainerPort'
 
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: Service
+    Properties:
+      RoleARN: !GetAtt AutoScalingRole.Arn
+      ResourceId: service/SampleService/ec2sample
+      ServiceNamespace: ecs
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: 1
+      MaxCapacity: 10
+
+  AutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: sample-auto-scaling-role
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [application-autoscaling.amazonaws.com]
+          Action: ["sts:AssumeRole"]
+
+  ScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: sample-service-auto-scaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 50.0
+
   Service:
     Type: AWS::ECS::Service
     DependsOn: LoadBalancerRule
@@ -333,8 +374,10 @@ Resources:
       ServiceName: !Ref 'ServiceName'
       Cluster: !Ref 'ECSCluster'
       DeploymentConfiguration:
-        MaximumPercent: 200
-        MinimumHealthyPercent: 75
+        MaximumPercent: 100
+        MinimumHealthyPercent: 20
+      DeploymentController:
+        Type: CODE_DEPLOY
       DesiredCount: !Ref 'DesiredCount'
       TaskDefinition: !Ref 'TaskDefinition'
       LoadBalancers:
@@ -350,7 +393,21 @@ Resources:
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
-      Name: !Ref 'ServiceName'
+      Name: SampleTargetGroup
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref 'VPC'
+
+  TargetGroup1:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 6
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: SampleTargetGroup1
       Port: 80
       Protocol: HTTP
       UnhealthyThresholdCount: 2
