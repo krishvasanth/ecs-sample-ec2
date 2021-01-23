@@ -25,7 +25,7 @@ Parameters:
     Default: ec2sample
   ImageURI:
     Type: String
-    Default: 765154140259.dkr.ecr.us-east-1.amazonaws.com/node:6.10.3
+    Default: 765154140259.dkr.ecr.us-east-1.amazonaws.com/ecs_sample:latest
   ContainerPort:
     Type: Number
     Default: 80
