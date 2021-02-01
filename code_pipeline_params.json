@@ -1,0 +1,30 @@
+[
+  {
+    "ParameterKey": "GithubUserName",
+    "ParameterValue": "krishvasanth"
+  },
+  {
+    "ParameterKey": "GithubRepo",
+    "ParameterValue": "ecs-sample-ec2"
+  },
+  {
+    "ParameterKey": "GithubBranch",
+    "ParameterValue": "master"
+  },
+  {
+    "ParameterKey": "GithubOAuthToken",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "Stage",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "ContainerPort",
+    "ParameterValue": "80"
+  },
+  {
+    "ParameterKey": "ECRRepository",
+    "ParameterValue": "ecs_sample"
+  }
+]
